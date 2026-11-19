@@ -31,6 +31,44 @@ export function computeOrderTotals(items: OrderItem[], settings: Settings): Orde
   return { subtotal, tax, svc, total: subtotal + tax + svc };
 }
 
+/**
+ * Generates 3 likely Indonesian Rupiah cash tender amounts above `due`
+ * based on 5.000, 10.000, 20.000, 50.000, and 100.000 denominations and combinations.
+ */
+export function getIndonesianCashSuggestions(due: number): number[] {
+  if (due <= 0) return [5000, 10000, 20000];
+
+  const pool = new Set<number>();
+  const add = (val: number) => {
+    if (val > due) pool.add(val);
+  };
+
+  const ceil5k = Math.ceil((due + 1) / 5000) * 5000;
+  const ceil10k = Math.ceil((due + 1) / 10000) * 10000;
+  const ceil20k = Math.ceil((due + 1) / 20000) * 20000;
+  const ceil50k = Math.ceil((due + 1) / 50000) * 50000;
+  const ceil100k = Math.ceil((due + 1) / 100000) * 100000;
+
+  if (due % 5000 !== 0) add(ceil5k);
+  add(ceil10k);
+
+  if (due < 20000) add(20000);
+  if (due < 50000) add(50000);
+  if (due < 100000) add(100000);
+  add(ceil50k);
+  add(ceil100k);
+
+  if (pool.size < 3) add(ceil5k);
+  if (pool.size < 3) add(ceil20k);
+  if (pool.size < 3 && ceil10k + 5000 <= ceil50k) add(ceil10k + 5000);
+  if (pool.size < 3) add(ceil10k + 10000);
+  if (pool.size < 3) add(ceil50k + 50000);
+  if (pool.size < 3) add(ceil100k + 50000);
+  if (pool.size < 3) add(ceil100k + 100000);
+
+  return [...pool].sort((a, b) => a - b).slice(0, 3);
+}
+
 export function OrdersView({
   orders,
   currentOrderId,
@@ -62,6 +100,7 @@ export function OrdersView({
 
   const [payModal, setPayModal] = useState(false);
   const [payments, setPayments] = useState<PaymentSplit[]>([{ method: 'Cash', amount: 0 }]);
+  const [customCashInputs, setCustomCashInputs] = useState<Record<number, string>>({});
 
   const [confirmDeleteOrderId, setConfirmDeleteOrderId] = useState<string | null>(null);
   const [confirmClear, setConfirmClear] = useState(false);
@@ -101,6 +140,7 @@ export function OrdersView({
   const openPayModal = () => {
     if (!currentOrder || !currentOrder.items.length) return;
     setPayments([{ method: 'Cash', amount: currentTotals.total }]);
+    setCustomCashInputs({});
     setPayModal(true);
   };
 
@@ -587,43 +627,152 @@ export function OrdersView({
           </div>
         </div>
 
-        <div className="space-y-2.5">
-          {payments.map((p, idx) => (
-            <div key={idx} className="flex items-center gap-2">
-              <select
-                value={p.method}
-                onChange={e => {
-                  const next = [...payments];
-                  next[idx] = { ...next[idx], method: e.target.value as PaymentSplit['method'] };
-                  setPayments(next);
-                }}
-                className="flex-1 px-3 py-2.5 rounded-xl border border-[var(--line)] bg-[var(--bg)] text-sm font-semibold text-[var(--ink)] outline-none focus:border-[var(--accent)] focus:bg-[var(--surface)]"
-              >
-                <option value="Cash">Cash</option>
-                <option value="QRIS">QRIS</option>
-                <option value="Transfer">Transfer</option>
-              </select>
-              <input
-                type="number"
-                value={p.amount}
-                onChange={e => {
-                  const next = [...payments];
-                  next[idx] = { ...next[idx], amount: Number(e.target.value) || 0 };
-                  setPayments(next);
-                }}
-                className="flex-1 px-3 py-2.5 rounded-xl border border-[var(--line)] bg-[var(--bg)] text-sm font-bold text-right text-[var(--ink)] tabular-nums outline-none focus:border-[var(--accent)] focus:bg-[var(--surface)]"
-              />
-              {payments.length > 1 && (
-                <button
-                  type="button"
-                  onClick={() => setPayments(payments.filter((_, i) => i !== idx))}
-                  className="p-2.5 rounded-xl border border-[var(--line)] text-[var(--danger)] hover:bg-[var(--accent-soft)] cursor-pointer"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              )}
-            </div>
-          ))}
+        <div className="space-y-3">
+          {payments.map((p, idx) => {
+            const otherPaid = payments.reduce(
+              (sum, item, i) => (i === idx ? sum : sum + (Number(item.amount) || 0)),
+              0
+            );
+            const cashDue = Math.max(0, currentTotals.total - otherPaid);
+            const cashSuggestions = p.method === 'Cash' ? getIndonesianCashSuggestions(cashDue) : [];
+            const customVal = customCashInputs[idx] ?? '';
+            const isCustomActive =
+              customVal !== '' &&
+              Number(customVal) === (Number(p.amount) || 0) &&
+              !cashSuggestions.includes(Number(p.amount) || 0);
+
+            return (
+              <div key={idx} className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <select
+                    value={p.method}
+                    onChange={e => {
+                      const next = [...payments];
+                      next[idx] = { ...next[idx], method: e.target.value as PaymentSplit['method'] };
+                      setPayments(next);
+                      setCustomCashInputs(prev => {
+                        const copy = { ...prev };
+                        delete copy[idx];
+                        return copy;
+                      });
+                    }}
+                    className="flex-1 px-3 py-2.5 rounded-xl border border-[var(--line)] bg-[var(--bg)] text-sm font-semibold text-[var(--ink)] outline-none focus:border-[var(--accent)] focus:bg-[var(--surface)]"
+                  >
+                    <option value="Cash">Cash</option>
+                    <option value="QRIS">QRIS</option>
+                    <option value="Transfer">Transfer</option>
+                  </select>
+                  <input
+                    type="number"
+                    value={p.amount}
+                    onChange={e => {
+                      const next = [...payments];
+                      next[idx] = { ...next[idx], amount: Number(e.target.value) || 0 };
+                      setPayments(next);
+                    }}
+                    className="flex-1 px-3 py-2.5 rounded-xl border border-[var(--line)] bg-[var(--bg)] text-sm font-bold text-right text-[var(--ink)] tabular-nums outline-none focus:border-[var(--accent)] focus:bg-[var(--surface)]"
+                  />
+                  {payments.length > 1 && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setPayments(payments.filter((_, i) => i !== idx));
+                        setCustomCashInputs({});
+                      }}
+                      className="p-2.5 rounded-xl border border-[var(--line)] text-[var(--danger)] hover:bg-[var(--accent-soft)] cursor-pointer"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  )}
+                </div>
+
+                {p.method === 'Cash' && (
+                  <div className="rounded-xl border border-[var(--line)] bg-[var(--bg)] p-2.5 space-y-2">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-[11px] font-extrabold uppercase tracking-wider text-[var(--muted)]">
+                        Cash Received
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const next = [...payments];
+                          next[idx] = { ...next[idx], amount: cashDue };
+                          setPayments(next);
+                          setCustomCashInputs(prev => ({ ...prev, [idx]: '' }));
+                        }}
+                        className={`px-2 py-0.5 rounded-lg text-[11px] font-bold border transition-colors cursor-pointer tabular-nums ${
+                          Number(p.amount) === cashDue
+                            ? 'border-[var(--accent)] bg-[var(--accent-soft)] text-[var(--accent)]'
+                            : 'border-[var(--line)] bg-[var(--surface)] text-[var(--ink-2)] hover:border-[var(--accent)]'
+                        }`}
+                      >
+                        Exact {rp(cashDue)}
+                      </button>
+                    </div>
+
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                      {cashSuggestions.map(amt => {
+                        const selected = Number(p.amount) === amt && !isCustomActive;
+                        return (
+                          <button
+                            key={amt}
+                            type="button"
+                            onClick={() => {
+                              const next = [...payments];
+                              next[idx] = { ...next[idx], amount: amt };
+                              setPayments(next);
+                              setCustomCashInputs(prev => ({ ...prev, [idx]: '' }));
+                            }}
+                            className={`flex items-center justify-center px-2.5 py-2.5 rounded-xl border text-center transition-all cursor-pointer active:scale-[0.98] ${
+                              selected
+                                ? 'border-[var(--accent)] bg-[var(--accent-soft)] text-[var(--accent)] ring-1 ring-[var(--accent)]'
+                                : 'border-[var(--line)] bg-[var(--surface)] text-[var(--ink)] hover:border-[var(--accent)]'
+                            }`}
+                          >
+                            <span className="text-xs font-extrabold tabular-nums whitespace-nowrap">
+                              {rp(amt)}
+                            </span>
+                          </button>
+                        );
+                      })}
+
+                      <label
+                        className={`flex flex-col justify-center px-2.5 py-1.5 rounded-xl border transition-all ${
+                          isCustomActive
+                            ? 'border-[var(--accent)] bg-[var(--accent-soft)] ring-1 ring-[var(--accent)]'
+                            : 'border-[var(--line)] bg-[var(--surface)] focus-within:border-[var(--accent)]'
+                        }`}
+                      >
+                        <span className="text-[10px] font-extrabold uppercase tracking-wider text-[var(--muted)]">
+                          Custom Rp
+                        </span>
+                        <input
+                          type="number"
+                          inputMode="numeric"
+                          min="0"
+                          step="1000"
+                          value={customVal}
+                          placeholder="Type..."
+                          onChange={e => {
+                            const raw = e.target.value;
+                            setCustomCashInputs(prev => ({ ...prev, [idx]: raw }));
+                            const parsed = Number(raw);
+                            const next = [...payments];
+                            next[idx] = {
+                              ...next[idx],
+                              amount: raw === '' ? cashDue : Number.isFinite(parsed) ? Math.max(0, parsed) : 0,
+                            };
+                            setPayments(next);
+                          }}
+                          className="w-full bg-transparent text-xs font-extrabold text-[var(--ink)] tabular-nums outline-none placeholder:text-[var(--muted)] placeholder:font-medium"
+                        />
+                      </label>
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
 
         <button
