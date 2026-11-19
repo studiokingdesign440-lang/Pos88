@@ -4,6 +4,7 @@ import { Settings, SyncMeta, ThemeId } from '../types';
 import { THEME_OPTIONS } from '../constants';
 import { fmtClockWithSeconds, getEffectiveTimezone, TIMEZONE_OPTIONS } from '../utils/time';
 import { ConfirmModal, Modal } from './Modal';
+import { PWAInstallButton } from './PWAInstallButton';
 
 interface SettingsViewProps {
   settings: Settings;
@@ -461,12 +462,12 @@ export function SettingsView({
             </label>
           </div>
 
-          {/* Local Backup */}
+          {/* Local Backup & Install */}
           <div className="theme-card p-5">
             <h3 className="text-[11px] font-extrabold uppercase tracking-wider text-[var(--gold)] mb-3.5">
-              Local Data Backup
+              Local Data Backup &amp; App Install
             </h3>
-            <div className="flex flex-wrap gap-2">
+            <div className="flex flex-wrap gap-2 mb-4">
               <button
                 type="button"
                 onClick={onExportJson}
@@ -488,6 +489,10 @@ export function SettingsView({
               >
                 Reset Local Data
               </button>
+            </div>
+            <div className="pt-3 border-t border-[var(--line-soft)] flex flex-wrap items-center justify-between gap-2">
+              <span className="text-xs font-bold text-[var(--ink-2)]">Install POS App</span>
+              <PWAInstallButton variant="card" />
             </div>
             <input
               ref={fileInputRef}

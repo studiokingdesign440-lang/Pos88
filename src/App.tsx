@@ -41,6 +41,8 @@ import { ProductsView } from './components/ProductsView';
 import { SalesView } from './components/SalesView';
 import { SettingsView } from './components/SettingsView';
 import { Modal } from './components/Modal';
+import { PWAInstallButton } from './components/PWAInstallButton';
+import { useOnlineStatus } from './hooks/useOnlineStatus';
 
 function loadInitialState(): PosState {
   try {
@@ -131,6 +133,8 @@ export default function App() {
 
   const [printerConnected, setPrinterConnected] = useState(printerState.connected);
   const [printerLabel, setPrinterLabel] = useState(printerState.label);
+  const [logoError, setLogoError] = useState(false);
+  const isOnline = useOnlineStatus();
 
   const [syncing, setSyncing] = useState(false);
   const [syncMeta, setSyncMeta] = useState<SyncMeta>({
@@ -806,9 +810,18 @@ export default function App() {
       <header className="flex items-center justify-between gap-6 px-5 h-16 shrink-0 bg-[var(--header-bg)] backdrop-blur-md border-b border-[var(--line)] z-30">
         {/* Zone 1: Brand wordmark */}
         <div className="flex items-center gap-2.5 shrink-0">
-          <div className="w-9 h-9 rounded-xl bg-[var(--accent)] text-[var(--accent-ink)] flex items-center justify-center font-display font-bold text-base shadow-sm">
-            88
-          </div>
+          {!logoError ? (
+            <img
+              src={`${import.meta.env.BASE_URL}assets/aistudio/icon_74a256f3.png`}
+              alt="Hokkien 88 Logo"
+              onError={() => setLogoError(true)}
+              className="w-10 h-10 rounded-full object-cover shrink-0 shadow-sm"
+            />
+          ) : (
+            <div className="w-9 h-9 rounded-xl bg-[var(--accent)] text-[var(--accent-ink)] flex items-center justify-center font-display font-bold text-base shadow-sm">
+              88
+            </div>
+          )}
           <span className="font-display font-bold text-base tracking-tight whitespace-nowrap shrink-0 text-[var(--ink)]">
             {state.settings.storeName || 'Hokkien 88'}
           </span>
@@ -832,8 +845,9 @@ export default function App() {
           ))}
         </nav>
 
-        {/* Zone 3: Primary action (Printer) */}
-        <div className="shrink-0">
+        {/* Zone 3: Primary actions (Install + Printer) */}
+        <div className="flex items-center gap-2 shrink-0">
+          <PWAInstallButton variant="header" />
           <button
             type="button"
             onClick={handleConnectPrinter}
@@ -1013,6 +1027,13 @@ export default function App() {
           {linesToPreviewText(previewModal.lines, state.settings.paperWidth)}
         </pre>
       </Modal>
+
+      {/* Offline Mode Indicator */}
+      {!isOnline && (
+        <div className="fixed bottom-4 left-4 z-[90] flex items-center gap-2 rounded-xl bg-[var(--gold)] px-3.5 py-2 text-xs font-bold text-white shadow-lg">
+          <span>Offline Mode — Orders &amp; expenses are saved locally</span>
+        </div>
+      )}
 
       {/* Toasts */}
       <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[100] flex flex-col items-center gap-2 pointer-events-none">
