@@ -17,6 +17,36 @@ export interface DailyMetrics {
   updatedAt: string;
 }
 
+export function getNetSaleBreakdown(sale: Sale): { cash: number; qris: number; total: number } {
+  const saleTotal = Number(sale.total) || 0;
+  const payments = sale.payments || [];
+  if (!payments.length) {
+    return { cash: saleTotal, qris: 0, total: saleTotal };
+  }
+
+  let rawCash = 0;
+  let rawQris = 0;
+  payments.forEach(p => {
+    const amt = Number(p.amount) || 0;
+    if (p.method === 'Cash') rawCash += amt;
+    else rawQris += amt;
+  });
+
+  const rawPaid = rawCash + rawQris;
+  const change = Math.max(0, Number(sale.change) || 0, rawPaid - saleTotal);
+
+  const cashDeduction = Math.min(rawCash, change);
+  const netCash = Math.max(0, rawCash - cashDeduction);
+  const remainingChange = Math.max(0, change - cashDeduction);
+  const netQris = Math.max(0, rawQris - remainingChange);
+
+  return {
+    cash: netCash,
+    qris: netQris,
+    total: netCash + netQris,
+  };
+}
+
 export function computeDailyMetrics(
   date: string,
   salesList: Sale[],
@@ -31,10 +61,9 @@ export function computeDailyMetrics(
   salesList
     .filter(s => s.date === date)
     .forEach(s => {
-      (s.payments || []).forEach(p => {
-        if (p.method === 'Cash') cashSales += Number(p.amount) || 0;
-        else qrisSales += Number(p.amount) || 0;
-      });
+      const breakdown = getNetSaleBreakdown(s);
+      cashSales += breakdown.cash;
+      qrisSales += breakdown.qris;
     });
   const totalSales = cashSales + qrisSales;
 

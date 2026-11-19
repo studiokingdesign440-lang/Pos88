@@ -1,5 +1,6 @@
 import { DailyRecord, Expense, PrintLine, Sale, Settings } from '../types';
 import { escHtml, fmt } from './format';
+import { getNetSaleBreakdown } from './sheets';
 import { fmtDateTime, localDate } from './time';
 
 type BluetoothServiceUUID = number | string;
@@ -230,10 +231,9 @@ export function buildSummaryReceipt(
   let cashSales = 0;
   let qrisSales = 0;
   sales.forEach(s => {
-    (s.payments || []).forEach(p => {
-      if (p.method === 'Cash') cashSales += Number(p.amount) || 0;
-      else qrisSales += Number(p.amount) || 0;
-    });
+    const breakdown = getNetSaleBreakdown(s);
+    cashSales += breakdown.cash;
+    qrisSales += breakdown.qris;
   });
 
   let cashExp = 0;

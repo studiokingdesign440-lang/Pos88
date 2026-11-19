@@ -221,8 +221,13 @@ export function SalesView({ sales, settings, onReprint }: SalesViewProps) {
               <span>Total</span>
               <span className="tabular-nums text-[var(--accent)]">{rp(detailSale.total)}</span>
             </div>
-            <div className="mt-2.5 text-xs text-[var(--ink-2)] tabular-nums">
-              Payments: {(detailSale.payments || []).map(p => `${p.method} ${rp(p.amount)}`).join(', ')}
+            <div className="mt-2.5 text-xs text-[var(--ink-2)] tabular-nums space-y-0.5">
+              <div>
+                Paid: {(detailSale.payments || []).map(p => `${p.method} ${rp(p.amount)}`).join(', ')}
+              </div>
+              {detailSale.change > 0 && (
+                <div className="text-[var(--green)] font-semibold">Change: {rp(detailSale.change)}</div>
+              )}
             </div>
           </div>
         )}
