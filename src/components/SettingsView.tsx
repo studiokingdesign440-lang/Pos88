@@ -55,14 +55,14 @@ export function SettingsView({
     setScriptModal(true);
     if (!scriptCode) {
       try {
-        const res = await fetch('/database_appscript.js');
+        const res = await fetch(`${import.meta.env.BASE_URL}database_appscript.js`);
         if (res.ok) {
           setScriptCode(await res.text());
         } else {
-          setScriptCode('// Unable to load /database_appscript.js');
+          setScriptCode('// Unable to load database_appscript.js');
         }
       } catch {
-        setScriptCode('// Unable to load /database_appscript.js');
+        setScriptCode('// Unable to load database_appscript.js');
       }
     }
   };
