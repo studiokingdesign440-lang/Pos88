@@ -1,0 +1,6 @@
+{
+  "name": "Hokkien 88 POS",
+  "description": "Point of Sale, Expenses, Daily Cash Reconciliation, and Google Sheets Sync for Hokkien 88.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

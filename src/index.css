@@ -1,0 +1,222 @@
+@import "tailwindcss";
+
+@layer base {
+  :root,
+  html[data-theme="original"] {
+    --bg: #F6F2EA;
+    --surface: #FFFFFF;
+    --surface-2: #F1EBE0;
+    --surface-hover: #FCFAF5;
+    --header-bg: rgba(255, 255, 255, 0.9);
+    --ink: #201A14;
+    --ink-2: #5F5347;
+    --muted: #8C7E6E;
+    --line: #E8DFD1;
+    --line-soft: #F3EDE2;
+    --accent: #A8201A;
+    --accent-hover: #911B16;
+    --accent-ink: #FFFFFF;
+    --accent-soft: #FBEAE7;
+    --gold: #9A7124;
+    --green: #246E4E;
+    --green-soft: #E7F4EC;
+    --green-line: #C9E7D6;
+    --blue: #2B5F9E;
+    --danger: #A8201A;
+    --eod-bg: #201A14;
+    --eod-ink: #FFFFFF;
+    --eod-muted: #D8CFC3;
+    --eod-accent: #4ADE80;
+    --receipt-bg: #FFFDF8;
+    --receipt-ink: #111111;
+    --font-body: 'Plus Jakarta Sans', ui-sans-serif, system-ui, sans-serif;
+    --font-display: 'Fraunces', Georgia, serif;
+    --card-radius: 16px;
+    --card-shadow: 0 1px 2px rgba(50, 35, 20, 0.05);
+  }
+
+  /* Theme 2: Hacker (Dark Matrix Terminal) */
+  html[data-theme="hacker"] {
+    --bg: #050A07;
+    --surface: #0A130E;
+    --surface-2: #102017;
+    --surface-hover: #0F1D15;
+    --header-bg: rgba(10, 19, 14, 0.94);
+    --ink: #D8FFE5;
+    --ink-2: #8AE8AE;
+    --muted: #569B71;
+    --line: #183926;
+    --line-soft: #12291C;
+    --accent: #00E676;
+    --accent-hover: #00C864;
+    --accent-ink: #04140A;
+    --accent-soft: rgba(0, 230, 118, 0.16);
+    --gold: #4ADE80;
+    --green: #00FF88;
+    --green-soft: rgba(0, 255, 136, 0.12);
+    --green-line: #1E6B43;
+    --blue: #38BDF8;
+    --danger: #FF5C5C;
+    --eod-bg: #030705;
+    --eod-ink: #D8FFE5;
+    --eod-muted: #7AD99E;
+    --eod-accent: #00FF88;
+    --receipt-bg: #08100B;
+    --receipt-ink: #A7F3D0;
+    --font-body: 'JetBrains Mono', ui-monospace, SFMono-Regular, monospace;
+    --font-display: 'JetBrains Mono', ui-monospace, SFMono-Regular, monospace;
+    --card-radius: 6px;
+    --card-shadow: 0 0 0 1px rgba(0, 230, 118, 0.08);
+  }
+
+  /* Theme 3: Retro Game (16-Bit Arcade Console) */
+  html[data-theme="retro"] {
+    --bg: #131024;
+    --surface: #1D1838;
+    --surface-2: #2A2350;
+    --surface-hover: #251F47;
+    --header-bg: rgba(29, 24, 56, 0.95);
+    --ink: #F8FAFC;
+    --ink-2: #CBD5E1;
+    --muted: #9B93C9;
+    --line: #4B3E8A;
+    --line-soft: #312861;
+    --accent: #FACC15;
+    --accent-hover: #EAB308;
+    --accent-ink: #131024;
+    --accent-soft: rgba(250, 204, 21, 0.2);
+    --gold: #38BDF8;
+    --green: #4ADE80;
+    --green-soft: rgba(74, 222, 128, 0.14);
+    --green-line: #2F855A;
+    --blue: #38BDF8;
+    --danger: #FB7185;
+    --eod-bg: #0C091A;
+    --eod-ink: #F8FAFC;
+    --eod-muted: #C7C1E8;
+    --eod-accent: #FACC15;
+    --receipt-bg: #181430;
+    --receipt-ink: #F8FAFC;
+    --font-body: 'JetBrains Mono', ui-monospace, SFMono-Regular, monospace;
+    --font-display: 'Silkscreen', 'JetBrains Mono', monospace;
+    --card-radius: 4px;
+    --card-shadow: 3px 3px 0px #080614;
+  }
+
+  /* Theme 4: Old School Terminal (Amber CRT Mainframe) */
+  html[data-theme="terminal"] {
+    --bg: #110B03;
+    --surface: #191005;
+    --surface-2: #261908;
+    --surface-hover: #221606;
+    --header-bg: rgba(25, 16, 5, 0.95);
+    --ink: #FFB000;
+    --ink-2: #E59400;
+    --muted: #9E6814;
+    --line: #54370B;
+    --line-soft: #362307;
+    --accent: #FFB000;
+    --accent-hover: #FFA000;
+    --accent-ink: #110B03;
+    --accent-soft: rgba(255, 176, 0, 0.18);
+    --gold: #FFD166;
+    --green: #FFCA3A;
+    --green-soft: rgba(255, 176, 0, 0.14);
+    --green-line: #7A5212;
+    --blue: #F59E0B;
+    --danger: #FF6B4A;
+    --eod-bg: #0B0702;
+    --eod-ink: #FFB000;
+    --eod-muted: #D9921E;
+    --eod-accent: #FFD166;
+    --receipt-bg: #140D04;
+    --receipt-ink: #FFB000;
+    --font-body: 'JetBrains Mono', ui-monospace, SFMono-Regular, monospace;
+    --font-display: 'JetBrains Mono', ui-monospace, SFMono-Regular, monospace;
+    --card-radius: 2px;
+    --card-shadow: none;
+  }
+
+  html, body, #root {
+    height: 100%;
+    margin: 0;
+  }
+
+  body {
+    font-family: var(--font-body);
+    background-color: var(--bg);
+    color: var(--ink);
+    -webkit-font-smoothing: antialiased;
+    -webkit-tap-highlight-color: transparent;
+  }
+}
+
+.font-display {
+  font-family: var(--font-display);
+}
+
+.font-mono-num {
+  font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, monospace;
+  font-variant-numeric: tabular-nums;
+}
+
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
+
+.theme-card {
+  background-color: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--card-radius);
+  box-shadow: var(--card-shadow);
+}
+
+html[data-theme="hacker"] body {
+  background-image:
+    linear-gradient(rgba(0, 230, 118, 0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0, 230, 118, 0.03) 1px, transparent 1px);
+  background-size: 28px 28px;
+}
+
+html[data-theme="terminal"] body {
+  background-image: repeating-linear-gradient(
+    0deg,
+    rgba(255, 176, 0, 0.025) 0px,
+    rgba(255, 176, 0, 0.025) 1px,
+    transparent 1px,
+    transparent 3px
+  );
+}
+
+html[data-theme="retro"] .font-display,
+html[data-theme="retro"] h1,
+html[data-theme="retro"] h2 {
+  font-family: 'Silkscreen', 'JetBrains Mono', monospace;
+  letter-spacing: -0.02em;
+}
+
+html[data-theme="hacker"] input,
+html[data-theme="hacker"] select,
+html[data-theme="hacker"] textarea,
+html[data-theme="retro"] input,
+html[data-theme="retro"] select,
+html[data-theme="retro"] textarea,
+html[data-theme="terminal"] input,
+html[data-theme="terminal"] select,
+html[data-theme="terminal"] textarea {
+  color-scheme: dark;
+}
+
+::-webkit-scrollbar {
+  width: 7px;
+  height: 7px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--line);
+  border-radius: 99px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
