@@ -711,18 +711,29 @@ export default function App() {
     setSyncing(true);
     try {
       const tz = getEffectiveTimezone(state.settings.timezone);
-      const sep = state.settings.gasUrl.includes('?') ? '&' : '?';
-      const url = `${state.settings.gasUrl.trim()}${sep}action=ping&tz=${encodeURIComponent(tz)}&_=${Date.now()}`;
+      const rawUrl = state.settings.gasUrl.trim();
+      if (rawUrl.includes('docs.google.com/spreadsheets')) {
+        throw new Error('Paste the Apps Script Web App URL (/exec), not the Google Sheet URL.');
+      }
+      if (/\/dev(\?|$)/.test(rawUrl)) {
+        throw new Error('You pasted a /dev URL. Deploy as Web App and use the /exec URL.');
+      }
+      const sep = rawUrl.includes('?') ? '&' : '?';
+      const url = `${rawUrl}${sep}action=ping&tz=${encodeURIComponent(tz)}&_=${Date.now()}`;
       const res = await fetch(url, { method: 'GET', redirect: 'follow' });
       const text = await res.text();
       if (text.trim().startsWith('<')) {
-        throw new Error('Web App returned HTML — deploy with "Who has access: Anyone".');
+        throw new Error('Web App returned HTML — deploy with "Who has access: Anyone" and authorize permissions.');
       }
       const data = JSON.parse(text) as {
         ok?: boolean;
+        error?: string;
         timezone?: string;
         spreadsheetTimezone?: string;
       };
+      if (data.ok === false || data.error) {
+        throw new Error(data.error || 'Apps Script returned an error.');
+      }
       setSyncMeta(prev => ({
         ...prev,
         lastSyncedAt: fmtTime(Date.now(), state.settings.timezone),
@@ -733,7 +744,12 @@ export default function App() {
         `Connected! App TZ: ${data.timezone || tz} · Sheet TZ: ${data.spreadsheetTimezone || 'Unknown'}`
       );
     } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Connection test failed';
+      const msg =
+        err instanceof TypeError
+          ? 'Blocked by CORS or network error. Ensure Apps Script is deployed as a New version with "Execute as: Me" and "Who has access: Anyone".'
+          : err instanceof Error
+          ? err.message
+          : 'Connection test failed';
       setSyncMeta(prev => ({ ...prev, lastError: msg }));
       showToast(msg, 'err');
     } finally {

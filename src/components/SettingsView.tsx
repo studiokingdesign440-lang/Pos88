@@ -204,9 +204,19 @@ export function SettingsView({
                 <Code2 className="w-3.5 h-3.5" />
                 View Fixed Apps Script
               </button>
+              {settings.gasUrl.trim().startsWith('https://') && (
+                <a
+                  href={`${settings.gasUrl.trim()}${settings.gasUrl.includes('?') ? '&' : '?'}action=ping`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[var(--line)] bg-[var(--surface)] text-xs font-bold text-[var(--ink-2)] hover:bg-[var(--bg)]"
+                >
+                  Open URL in Browser
+                </a>
+              )}
             </div>
 
-            <div className="text-xs text-[var(--ink-2)] bg-[var(--bg)] border border-[var(--line)] rounded-xl p-3 space-y-1">
+            <div className="text-xs text-[var(--ink-2)] bg-[var(--bg)] border border-[var(--line)] rounded-xl p-3 space-y-1.5">
               <div>
                 Last sync:{' '}
                 <b className="text-[var(--ink)]">
@@ -222,7 +232,9 @@ export function SettingsView({
                 </div>
               )}
               {syncMeta.lastError && (
-                <div className="text-[var(--danger)] font-semibold">Last error: {syncMeta.lastError}</div>
+                <div className="text-[var(--danger)] font-semibold leading-relaxed pt-1 border-t border-[var(--line)]">
+                  Error: {syncMeta.lastError}
+                </div>
               )}
             </div>
           </div>

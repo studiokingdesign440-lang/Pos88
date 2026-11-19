@@ -87,25 +87,57 @@ async function parseGasResponse(res: Response): Promise<Record<string, unknown>>
   return json;
 }
 
+export function validateGasUrl(rawUrl: string): string {
+  const url = (rawUrl || '').trim();
+  if (!url) {
+    throw new Error('Apps Script Web App URL is not configured.');
+  }
+  if (url.includes('docs.google.com/spreadsheets')) {
+    throw new Error(
+      'You pasted the Google Sheet URL. Open Extensions > Apps Script > Deploy and paste the Web App URL ending in /exec.'
+    );
+  }
+  if (/\/dev(\?|$)/.test(url)) {
+    throw new Error(
+      'You pasted a /dev test URL. Deploy as a Web App and paste the production URL ending in /exec.'
+    );
+  }
+  if (!url.startsWith('https://script.google.com/')) {
+    throw new Error('Apps Script URL must start with https://script.google.com/macros/s/.../exec');
+  }
+  return url;
+}
+
+function formatFetchError(err: unknown): Error {
+  if (err instanceof TypeError) {
+    return new Error(
+      'Blocked by CORS or network error. In Google Apps Script, deploy a New version with "Execute as: Me" and "Who has access: Anyone" (not "Only myself" or "Anyone with Google account"), and authorize permissions when prompted.'
+    );
+  }
+  return err instanceof Error ? err : new Error(String(err));
+}
+
 export async function gasCall(
   gasUrl: string,
   action: string,
   payload: unknown,
   timezoneSetting?: string
 ): Promise<Record<string, unknown>> {
-  if (!gasUrl || !gasUrl.trim()) {
-    throw new Error('Apps Script Web App URL is not configured.');
-  }
+  const url = validateGasUrl(gasUrl);
   const tz = getEffectiveTimezone(timezoneSetting);
-  const res = await fetch(gasUrl.trim(), {
-    method: 'POST',
-    redirect: 'follow',
-    body: JSON.stringify({ action, timezone: tz, payload }),
-  });
-  if (!res.ok) {
-    throw new Error(`HTTP ${res.status} from Google Apps Script.`);
+  try {
+    const res = await fetch(url, {
+      method: 'POST',
+      redirect: 'follow',
+      body: JSON.stringify({ action, timezone: tz, payload }),
+    });
+    if (!res.ok) {
+      throw new Error(`HTTP ${res.status} from Google Apps Script.`);
+    }
+    return parseGasResponse(res);
+  } catch (err) {
+    throw formatFetchError(err);
   }
-  return parseGasResponse(res);
 }
 
 export interface PullAllResult {
@@ -122,13 +154,16 @@ export async function pullAllFromSheets(
   gasUrl: string,
   timezoneSetting?: string
 ): Promise<PullAllResult> {
-  if (!gasUrl || !gasUrl.trim()) {
-    throw new Error('Apps Script Web App URL is not configured.');
-  }
+  const baseUrl = validateGasUrl(gasUrl);
   const tz = getEffectiveTimezone(timezoneSetting);
-  const sep = gasUrl.includes('?') ? '&' : '?';
-  const url = `${gasUrl.trim()}${sep}action=all&tz=${encodeURIComponent(tz)}&_=${Date.now()}`;
-  const res = await fetch(url, { method: 'GET', redirect: 'follow' });
+  const sep = baseUrl.includes('?') ? '&' : '?';
+  const url = `${baseUrl}${sep}action=all&tz=${encodeURIComponent(tz)}&_=${Date.now()}`;
+  let res: Response;
+  try {
+    res = await fetch(url, { method: 'GET', redirect: 'follow' });
+  } catch (err) {
+    throw formatFetchError(err);
+  }
   if (!res.ok) {
     throw new Error(`HTTP ${res.status} from Google Apps Script.`);
   }

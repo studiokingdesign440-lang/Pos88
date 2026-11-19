@@ -15,23 +15,35 @@ function getTz(ss, requestedTz) {
   if (requestedTz && typeof requestedTz === 'string' && requestedTz !== 'local') {
     return requestedTz;
   }
-  return ss.getSpreadsheetTimeZone() || DEFAULT_TIMEZONE;
+  return (ss && ss.getSpreadsheetTimeZone()) || DEFAULT_TIMEZONE;
+}
+
+function safeFormatDate(dateObj, tz, pattern) {
+  try {
+    return Utilities.formatDate(dateObj, tz || DEFAULT_TIMEZONE, pattern);
+  } catch (e) {
+    try {
+      return Utilities.formatDate(dateObj, DEFAULT_TIMEZONE, pattern);
+    } catch (e2) {
+      return Utilities.formatDate(dateObj, 'UTC', pattern);
+    }
+  }
 }
 
 function normalizeDateStr(val, tz) {
   if (val === null || val === undefined || val === '') return '';
   if (Object.prototype.toString.call(val) === '[object Date]' && !isNaN(val.getTime())) {
-    return Utilities.formatDate(val, tz, 'yyyy-MM-dd');
+    return safeFormatDate(val, tz, 'yyyy-MM-dd');
   }
   const s = String(val).trim();
   if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
   if (/^\d{4}-\d{2}-\d{2}T/.test(s)) {
     const d = new Date(s);
-    if (!isNaN(d.getTime())) return Utilities.formatDate(d, tz, 'yyyy-MM-dd');
+    if (!isNaN(d.getTime())) return safeFormatDate(d, tz, 'yyyy-MM-dd');
   }
   const parsed = new Date(s);
   if (!isNaN(parsed.getTime())) {
-    return Utilities.formatDate(parsed, tz, 'yyyy-MM-dd');
+    return safeFormatDate(parsed, tz, 'yyyy-MM-dd');
   }
   return s;
 }
@@ -79,36 +91,46 @@ function writeRowValues(sheet, rowIndex, headers, rowValues) {
 }
 
 function doGet(e) {
-  const params = (e && e.parameter) || {};
-  const action = params.action || '';
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const tz = getTz(ss, params.tz);
+  try {
+    const params = (e && e.parameter) || {};
+    const action = params.action || '';
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    if (!ss) {
+      return jsonResponse({ ok: false, error: 'Apps Script must be opened from Google Sheets (Extensions > Apps Script).' });
+    }
+    const tz = getTz(ss, params.tz);
 
-  if (action === 'all') {
+    if (action === 'all') {
+      return jsonResponse({
+        ok: true,
+        timezone: tz,
+        spreadsheetTimezone: ss.getSpreadsheetTimeZone(),
+        products: getSheetData(ss, PRODUCTS_SHEET, tz),
+        sales: getSheetData(ss, SALES_SHEET, tz),
+        expenses: getSheetData(ss, EXPENSES_SHEET, tz),
+        daily: getDailyData(ss, tz),
+        settings: getSettingsData(ss)
+      });
+    }
+
     return jsonResponse({
       ok: true,
       timezone: tz,
       spreadsheetTimezone: ss.getSpreadsheetTimeZone(),
-      products: getSheetData(ss, PRODUCTS_SHEET, tz),
-      sales: getSheetData(ss, SALES_SHEET, tz),
-      expenses: getSheetData(ss, EXPENSES_SHEET, tz),
-      daily: getDailyData(ss, tz),
-      settings: getSettingsData(ss)
+      serverTime: safeFormatDate(new Date(), tz, "yyyy-MM-dd'T'HH:mm:ssXXX")
     });
+  } catch (err) {
+    return jsonResponse({ ok: false, error: err.toString() });
   }
-
-  return jsonResponse({
-    ok: true,
-    timezone: tz,
-    spreadsheetTimezone: ss.getSpreadsheetTimeZone(),
-    serverTime: Utilities.formatDate(new Date(), tz, "yyyy-MM-dd'T'HH:mm:ssXXX")
-  });
 }
 
 function doPost(e) {
   try {
     const data = JSON.parse((e && e.postData && e.postData.contents) || '{}');
     const ss = SpreadsheetApp.getActiveSpreadsheet();
+    if (!ss) {
+      return jsonResponse({ ok: false, error: 'Apps Script must be opened from Google Sheets (Extensions > Apps Script).' });
+    }
     const tz = getTz(ss, data.timezone);
     const action = data.action;
     const payload = data.payload;
