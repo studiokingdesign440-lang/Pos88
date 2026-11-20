@@ -105,6 +105,12 @@ export interface SyncMeta {
   pendingCount: number;
 }
 
+export interface BusinessDaySession {
+  id: string;
+  date: string;
+  openedAt: number;
+}
+
 export interface PosState {
   products: Product[];
   sales: Sale[];
@@ -113,6 +119,7 @@ export interface PosState {
   daily: Record<string, DailyRecord>;
   settings: Settings;
   pendingDeletes: PendingDeletes;
+  businessDay: BusinessDaySession | null;
 }
 
 export interface PrintLine {

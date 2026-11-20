@@ -1,6 +1,6 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Plus, RefreshCw, Trash2 } from 'lucide-react';
-import { Expense, Settings } from '../types';
+import { BusinessDaySession, Expense, Settings } from '../types';
 import { QUICK_EXPENSES } from '../constants';
 import { rp } from '../utils/format';
 import { localDate } from '../utils/time';
@@ -9,6 +9,7 @@ import { ConfirmModal, Modal } from './Modal';
 interface ExpensesViewProps {
   expenses: Expense[];
   settings: Settings;
+  businessDay: BusinessDaySession | null;
   syncing: boolean;
   onAddExpense: (data: { date: string; name: string; amount: number; type: 'Cash' | 'Credit' }) => Promise<void>;
   onDeleteExpense: (id: string) => Promise<void>;
@@ -19,6 +20,7 @@ interface ExpensesViewProps {
 export function ExpensesView({
   expenses,
   settings,
+  businessDay,
   syncing,
   onAddExpense,
   onDeleteExpense,
@@ -26,13 +28,23 @@ export function ExpensesView({
   onToast,
 }: ExpensesViewProps) {
   const today = localDate(new Date(), settings.timezone);
-  const [selectedDate, setSelectedDate] = useState(today);
+  const activeDay = businessDay?.date || today;
+  const [selectedDate, setSelectedDate] = useState(activeDay);
+  const prevActiveDayRef = useRef(activeDay);
   const [modalOpen, setModalOpen] = useState(false);
   const [expName, setExpName] = useState('');
   const [expAmount, setExpAmount] = useState('');
   const [expType, setExpType] = useState<'Cash' | 'Credit'>('Cash');
-  const [expDate, setExpDate] = useState(today);
+  const [expDate, setExpDate] = useState(activeDay);
   const [deleteId, setDeleteId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (prevActiveDayRef.current !== activeDay) {
+      prevActiveDayRef.current = activeDay;
+      setSelectedDate(activeDay);
+      setExpDate(activeDay);
+    }
+  }, [activeDay]);
 
   const dayExpenses = useMemo(
     () =>
@@ -51,7 +63,7 @@ export function ExpensesView({
     setExpName(defaultName);
     setExpAmount('');
     setExpType('Cash');
-    setExpDate(selectedDate || today);
+    setExpDate(selectedDate || activeDay);
     setModalOpen(true);
   };
 
@@ -64,7 +76,7 @@ export function ExpensesView({
     }
     setModalOpen(false);
     await onAddExpense({
-      date: expDate || today,
+      date: expDate || activeDay,
       name,
       amount: amt,
       type: expType,
@@ -86,16 +98,16 @@ export function ExpensesView({
             <input
               type="date"
               value={selectedDate}
-              onChange={e => setSelectedDate(e.target.value || today)}
+              onChange={e => setSelectedDate(e.target.value || activeDay)}
               className="px-3 py-2 rounded-xl border border-[var(--line)] bg-[var(--surface)] text-xs font-semibold text-[var(--ink)] outline-none focus:border-[var(--accent)]"
             />
-            {selectedDate !== today && (
+            {selectedDate !== activeDay && (
               <button
                 type="button"
-                onClick={() => setSelectedDate(today)}
+                onClick={() => setSelectedDate(activeDay)}
                 className="px-3 py-2 rounded-xl border border-[var(--line)] bg-[var(--surface)] text-xs font-bold text-[var(--ink-2)] hover:bg-[var(--surface-2)] whitespace-nowrap shrink-0 cursor-pointer"
               >
-                Today
+                {businessDay ? 'Active Day' : 'Today'}
               </button>
             )}
             {settings.gasUrl && (
@@ -123,7 +135,7 @@ export function ExpensesView({
         {/* Quick Add Grid */}
         <div className="theme-card p-5 mb-5">
           <h3 className="text-[11px] font-extrabold uppercase tracking-wider text-[var(--gold)] mb-3">
-            Quick Add ({selectedDate === today ? 'Today' : selectedDate})
+            Quick Add ({selectedDate === activeDay ? (businessDay ? `Business Day ${activeDay}` : 'Today') : selectedDate})
           </h3>
           <div className="grid grid-cols-[repeat(auto-fill,minmax(108px,1fr))] gap-2">
             {QUICK_EXPENSES.map(name => (

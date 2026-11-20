@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { Plus, X, Pencil, Trash2 } from 'lucide-react';
-import { Order, OrderItem, OrderTotals, PaymentSplit, Product, Settings } from '../types';
+import { BusinessDaySession, Order, OrderItem, OrderTotals, PaymentSplit, Product, Settings } from '../types';
 import { ORDER_SHORTCUTS } from '../constants';
 import { rp, uid } from '../utils/format';
 import { fmtTime } from '../utils/time';
@@ -11,6 +11,8 @@ interface OrdersViewProps {
   currentOrderId: string | null;
   products: Product[];
   settings: Settings;
+  businessDay: BusinessDaySession | null;
+  onOpenBusinessDayModal: () => void;
   onSelectOrder: (id: string) => void;
   onCreateOrder: (name: string) => void;
   onDeleteOrder: (id: string) => void;
@@ -74,6 +76,8 @@ export function OrdersView({
   currentOrderId,
   products,
   settings,
+  businessDay,
+  onOpenBusinessDayModal,
   onSelectOrder,
   onCreateOrder,
   onDeleteOrder,
@@ -200,6 +204,21 @@ export function OrdersView({
           )}
         </div>
       </div>
+
+      {!businessDay && (
+        <div className="flex flex-wrap items-center justify-between gap-2 px-5 py-2 border-b border-[var(--line)] bg-[var(--accent-soft)] text-xs shrink-0">
+          <span className="font-semibold text-[var(--ink)]">
+            Business Day is currently closed. Open a Business Day to group all sales (including after midnight) into one shift.
+          </span>
+          <button
+            type="button"
+            onClick={onOpenBusinessDayModal}
+            className="px-3 py-1 rounded-lg bg-[var(--accent)] text-[var(--accent-ink)] text-xs font-bold whitespace-nowrap shrink-0 cursor-pointer hover:bg-[var(--accent-hover)]"
+          >
+            Open Business Day
+          </button>
+        </div>
+      )}
 
       {/* Main POS Split */}
       <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_380px] flex-1 min-h-0 overflow-hidden">

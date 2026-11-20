@@ -1,6 +1,6 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Printer } from 'lucide-react';
-import { Sale, Settings } from '../types';
+import { BusinessDaySession, Sale, Settings } from '../types';
 import { rp } from '../utils/format';
 import { fmtDateTime, localDate, monthStart, shiftDays } from '../utils/time';
 import { Modal } from './Modal';
@@ -8,14 +8,25 @@ import { Modal } from './Modal';
 interface SalesViewProps {
   sales: Sale[];
   settings: Settings;
+  businessDay: BusinessDaySession | null;
   onReprint: (sale: Sale) => void;
 }
 
-export function SalesView({ sales, settings, onReprint }: SalesViewProps) {
+export function SalesView({ sales, settings, businessDay, onReprint }: SalesViewProps) {
   const today = localDate(new Date(), settings.timezone);
-  const [fromDate, setFromDate] = useState(today);
-  const [toDate, setToDate] = useState(today);
+  const activeDay = businessDay?.date || today;
+  const [fromDate, setFromDate] = useState(activeDay);
+  const [toDate, setToDate] = useState(activeDay);
+  const prevActiveDayRef = useRef(activeDay);
   const [detailSale, setDetailSale] = useState<Sale | null>(null);
+
+  useEffect(() => {
+    if (prevActiveDayRef.current !== activeDay) {
+      prevActiveDayRef.current = activeDay;
+      setFromDate(activeDay);
+      setToDate(activeDay);
+    }
+  }, [activeDay]);
 
   const filtered = useMemo(() => {
     return sales
@@ -30,20 +41,20 @@ export function SalesView({ sales, settings, onReprint }: SalesViewProps) {
   const totalRange = useMemo(() => filtered.reduce((sum, s) => sum + (Number(s.total) || 0), 0), [filtered]);
 
   const applyPreset = (preset: 'today' | 'yesterday' | '7' | 'month') => {
-    const nowDate = localDate(new Date(), settings.timezone);
+    const baseDate = businessDay?.date || localDate(new Date(), settings.timezone);
     if (preset === 'today') {
-      setFromDate(nowDate);
-      setToDate(nowDate);
+      setFromDate(baseDate);
+      setToDate(baseDate);
     } else if (preset === 'yesterday') {
-      const y = shiftDays(nowDate, -1);
+      const y = shiftDays(baseDate, -1);
       setFromDate(y);
       setToDate(y);
     } else if (preset === '7') {
-      setFromDate(shiftDays(nowDate, -6));
-      setToDate(nowDate);
+      setFromDate(shiftDays(baseDate, -6));
+      setToDate(baseDate);
     } else if (preset === 'month') {
-      setFromDate(monthStart(nowDate));
-      setToDate(nowDate);
+      setFromDate(monthStart(baseDate));
+      setToDate(baseDate);
     }
   };
 
@@ -78,7 +89,7 @@ export function SalesView({ sales, settings, onReprint }: SalesViewProps) {
               onClick={() => applyPreset('today')}
               className="px-3 py-2 rounded-xl border border-[var(--line)] bg-[var(--surface)] text-xs font-bold text-[var(--ink-2)] hover:bg-[var(--surface-2)] whitespace-nowrap shrink-0 cursor-pointer"
             >
-              Today
+              {businessDay ? 'Active Day' : 'Today'}
             </button>
             <button
               type="button"

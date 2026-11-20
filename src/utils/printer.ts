@@ -1,4 +1,4 @@
-import { DailyRecord, Expense, PrintLine, Sale, Settings } from '../types';
+import { BusinessDaySession, DailyRecord, Expense, PrintLine, Sale, Settings } from '../types';
 import { escHtml, fmt } from './format';
 import { getNetSaleBreakdown } from './sheets';
 import { fmtDateTime, localDate } from './time';
@@ -209,7 +209,8 @@ export function buildSummaryReceipt(
   salesList: Sale[],
   expensesList: Expense[],
   dailyMap: Record<string, DailyRecord>,
-  targetDate?: string
+  targetDate?: string,
+  businessDay?: BusinessDaySession | null
 ): PrintLine[] {
   const width = Number(st.paperWidth) === 80 ? 48 : 32;
   const lines: PrintLine[] = [];
@@ -223,7 +224,7 @@ export function buildSummaryReceipt(
     return sp >= 1 ? left + ' '.repeat(sp) + right : left.slice(0, Math.max(0, width - right.length - 1)) + ' ' + right;
   };
 
-  const today = targetDate || localDate(new Date(), st.timezone);
+  const today = targetDate || businessDay?.date || localDate(new Date(), st.timezone);
   const dayData = dailyMap[today] || { kas: 0, actualCash: 0, expectedCash: 0 };
   const sales = salesList.filter(s => s.date === today);
   const exps = expensesList.filter(e => e.date === today);
@@ -246,7 +247,11 @@ export function buildSummaryReceipt(
   const expectedCash = (Number(dayData.kas) || 0) + cashSales - cashExp;
 
   center('END OF DAY REPORT', { size: 2, bold: true });
-  center(today + ' · ' + fmtDateTime(new Date(), st.timezone));
+  center('Business Day: ' + today);
+  if (businessDay && businessDay.date === today) {
+    center('Opened: ' + fmtDateTime(businessDay.openedAt, st.timezone));
+  }
+  center('Printed: ' + fmtDateTime(new Date(), st.timezone));
   hr();
 
   add('SALES', { bold: true });

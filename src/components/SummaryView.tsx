@@ -1,8 +1,8 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { Printer, RefreshCw, Save } from 'lucide-react';
-import { DailyRecord, Expense, Sale, Settings } from '../types';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { Play, Printer, RefreshCw, Save } from 'lucide-react';
+import { BusinessDaySession, DailyRecord, Expense, Sale, Settings } from '../types';
 import { rp } from '../utils/format';
-import { fmtLongDate, localDate } from '../utils/time';
+import { fmtDateTime, fmtLongDate, localDate } from '../utils/time';
 import { computeDailyMetrics } from '../utils/sheets';
 
 interface SummaryViewProps {
@@ -10,10 +10,12 @@ interface SummaryViewProps {
   expenses: Expense[];
   daily: Record<string, DailyRecord>;
   settings: Settings;
+  businessDay: BusinessDaySession | null;
   syncing: boolean;
   onSaveDaily: (date: string, kas: number, actualCash: number) => Promise<void>;
   onPrintSummary: (date: string) => void;
   onPushAll: () => Promise<void>;
+  onOpenBusinessDayModal: () => void;
 }
 
 export function SummaryView({
@@ -21,15 +23,26 @@ export function SummaryView({
   expenses,
   daily,
   settings,
+  businessDay,
   syncing,
   onSaveDaily,
   onPrintSummary,
   onPushAll,
+  onOpenBusinessDayModal,
 }: SummaryViewProps) {
   const today = localDate(new Date(), settings.timezone);
-  const [selectedDate, setSelectedDate] = useState(today);
+  const activeDay = businessDay?.date || today;
+  const [selectedDate, setSelectedDate] = useState(activeDay);
+  const prevActiveDayRef = useRef(activeDay);
   const [kasInput, setKasInput] = useState<string>('');
   const [actualCashInput, setActualCashInput] = useState<string>('');
+
+  useEffect(() => {
+    if (prevActiveDayRef.current !== activeDay) {
+      prevActiveDayRef.current = activeDay;
+      setSelectedDate(activeDay);
+    }
+  }, [activeDay]);
 
   const metrics = useMemo(
     () => computeDailyMetrics(selectedDate, sales, expenses, daily[selectedDate]),
@@ -46,6 +59,7 @@ export function SummaryView({
   const parsedActual = Number(actualCashInput) || 0;
   const liveExpectedCash = parsedKas + metrics.cashSales - metrics.cashExpenses;
   const variance = parsedActual > 0 ? parsedActual - liveExpectedCash : 0;
+  const isViewingActiveBusinessDay = Boolean(businessDay && selectedDate === businessDay.date);
 
   return (
     <div className="h-full overflow-y-auto p-6">
@@ -53,23 +67,38 @@ export function SummaryView({
         <div className="flex flex-wrap items-center justify-between gap-3 mb-5">
           <div>
             <h1 className="text-2xl font-extrabold tracking-tight text-[var(--ink)]">Daily Summary</h1>
-            <p className="text-xs text-[var(--muted)] mt-0.5">{fmtLongDate(selectedDate)}</p>
+            <p className="text-xs text-[var(--muted)] mt-0.5 tabular-nums">
+              {fmtLongDate(selectedDate)}
+              {isViewingActiveBusinessDay && businessDay
+                ? ` · Open since ${fmtDateTime(businessDay.openedAt, settings.timezone)}`
+                : ''}
+            </p>
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
             <input
               type="date"
               value={selectedDate}
-              onChange={e => setSelectedDate(e.target.value || today)}
+              onChange={e => setSelectedDate(e.target.value || activeDay)}
               className="px-3 py-2 rounded-xl border border-[var(--line)] bg-[var(--surface)] text-xs font-semibold text-[var(--ink)] outline-none focus:border-[var(--accent)]"
             />
-            {selectedDate !== today && (
+            {selectedDate !== activeDay && (
               <button
                 type="button"
-                onClick={() => setSelectedDate(today)}
+                onClick={() => setSelectedDate(activeDay)}
                 className="px-3 py-2 rounded-xl border border-[var(--line)] bg-[var(--surface)] text-xs font-bold text-[var(--ink-2)] hover:bg-[var(--surface-2)] whitespace-nowrap shrink-0 cursor-pointer"
               >
-                Today
+                {businessDay ? 'Active Day' : 'Today'}
+              </button>
+            )}
+            {!businessDay && (
+              <button
+                type="button"
+                onClick={onOpenBusinessDayModal}
+                className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-[var(--line)] bg-[var(--surface)] text-xs font-bold text-[var(--green)] hover:bg-[var(--surface-2)] whitespace-nowrap shrink-0 cursor-pointer"
+              >
+                <Play className="w-3.5 h-3.5" />
+                Open Day
               </button>
             )}
             {settings.gasUrl && (
@@ -89,7 +118,7 @@ export function SummaryView({
               className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[var(--accent)] text-[var(--accent-ink)] text-xs font-bold shadow-sm hover:bg-[var(--accent-hover)] whitespace-nowrap shrink-0 cursor-pointer"
             >
               <Printer className="w-3.5 h-3.5" />
-              Print End of Day
+              {isViewingActiveBusinessDay ? 'Print & End Day' : 'Print End of Day'}
             </button>
           </div>
         </div>

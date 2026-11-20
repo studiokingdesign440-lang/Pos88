@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { Printer } from 'lucide-react';
+import { Play, Printer } from 'lucide-react';
 import {
+  BusinessDaySession,
   DailyRecord,
   Expense,
   OrderItem,
@@ -15,8 +16,8 @@ import {
   ViewTab,
 } from './types';
 import { DEFAULT_PRODUCTS, DEFAULT_SETTINGS, STORE_KEY } from './constants';
-import { pickRandom, uid } from './utils/format';
-import { fmtTime, getEffectiveTimezone, localDate, normalizeDateFromSheet } from './utils/time';
+import { pickRandom, rp, uid } from './utils/format';
+import { fmtDateTime, fmtTime, getEffectiveTimezone, localDate, normalizeDateFromSheet } from './utils/time';
 import {
   buildEscPos,
   buildReceipt,
@@ -95,6 +96,15 @@ function loadInitialState(): PosState {
         });
       }
 
+      const businessDay: BusinessDaySession | null =
+        parsed.businessDay && typeof parsed.businessDay === 'object' && parsed.businessDay.date
+          ? {
+              id: String(parsed.businessDay.id || uid()),
+              date: normalizeDateFromSheet(parsed.businessDay.date, tz),
+              openedAt: Number(parsed.businessDay.openedAt) || Date.now(),
+            }
+          : null;
+
       return {
         products,
         sales,
@@ -106,6 +116,7 @@ function loadInitialState(): PosState {
           expenses: parsed.pendingDeletes?.expenses || [],
           sales: parsed.pendingDeletes?.sales || [],
         },
+        businessDay,
       };
     }
   } catch (err) {
@@ -120,6 +131,7 @@ function loadInitialState(): PosState {
     daily: {},
     settings: { ...DEFAULT_SETTINGS },
     pendingDeletes: { expenses: [], sales: [] },
+    businessDay: null,
   };
 }
 
@@ -150,7 +162,13 @@ export default function App() {
     title: string;
     subtitle?: string;
     lines: PrintLine[];
+    summaryDate?: string;
   }>({ open: false, title: '', lines: [] });
+  const [closeDayOnPrint, setCloseDayOnPrint] = useState(true);
+
+  const [businessDayModal, setBusinessDayModal] = useState<'open' | 'info' | null>(null);
+  const [openDayDate, setOpenDayDate] = useState(() => localDate(new Date(), state.settings.timezone));
+  const [openDayKas, setOpenDayKas] = useState('');
 
   const showToast = useCallback((msg: string, type: 'ok' | 'err' = 'ok') => {
     const id = uid();
@@ -320,13 +338,99 @@ export default function App() {
     }));
   };
 
+  const openBusinessDayDialog = () => {
+    if (state.businessDay) {
+      setBusinessDayModal('info');
+      return;
+    }
+    const d = localDate(new Date(), state.settings.timezone);
+    setOpenDayDate(d);
+    const existingKas = state.daily[d]?.kas;
+    setOpenDayKas(existingKas ? String(existingKas) : '');
+    setBusinessDayModal('open');
+  };
+
+  const handleOpenBusinessDay = async (dateStr: string, kasAmount: number) => {
+    const cleanDate = dateStr || localDate(new Date(), state.settings.timezone);
+    const session: BusinessDaySession = {
+      id: uid(),
+      date: cleanDate,
+      openedAt: Date.now(),
+    };
+    const updatedDaily = computeDailyMetrics(cleanDate, state.sales, state.expenses, {
+      ...(state.daily[cleanDate] || { kas: 0, actualCash: 0, expectedCash: 0 }),
+      kas: kasAmount,
+    });
+
+    setState(prev => ({
+      ...prev,
+      businessDay: session,
+      daily: { ...prev.daily, [cleanDate]: updatedDaily },
+    }));
+    setBusinessDayModal(null);
+    showToast(`Business Day ${cleanDate} opened`);
+
+    if (state.settings.gasUrl) {
+      try {
+        await gasCall(state.settings.gasUrl, 'saveDaily', updatedDaily, state.settings.timezone);
+      } catch {
+        // Daily kas stays saved locally and syncs with next sale/push
+      }
+    }
+  };
+
+  const handleCloseBusinessDay = async (dateOverride?: string) => {
+    const targetDate = dateOverride || state.businessDay?.date;
+    if (!targetDate) return;
+
+    const updatedDaily = computeDailyMetrics(
+      targetDate,
+      state.sales,
+      state.expenses,
+      state.daily[targetDate]
+    );
+
+    setState(prev => ({
+      ...prev,
+      businessDay: prev.businessDay?.date === targetDate ? null : prev.businessDay,
+      daily: { ...prev.daily, [targetDate]: updatedDaily },
+    }));
+    setBusinessDayModal(null);
+
+    if (!state.settings.gasUrl) {
+      showToast(`Business Day ${targetDate} closed & saved`);
+      return;
+    }
+
+    try {
+      await gasCall(state.settings.gasUrl, 'saveDaily', updatedDaily, state.settings.timezone);
+      setSyncMeta(prev => ({
+        ...prev,
+        lastSyncedAt: fmtTime(Date.now(), state.settings.timezone),
+        lastAction: `Business Day ${targetDate} closed & synced`,
+        lastError: null,
+      }));
+      showToast(`Business Day ${targetDate} closed & synced`);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Sync failed';
+      setSyncMeta(prev => ({ ...prev, lastError: msg }));
+      showToast(`Business Day ${targetDate} closed locally; sync failed: ${msg}`, 'err');
+    }
+  };
+
   const handleCompleteSale = async (payments: PaymentSplit[]) => {
     const order = state.orders.find(o => o.id === currentOrderId);
     if (!order) return;
 
     const totals = computeOrderTotals(order.items, state.settings);
     const nowMs = Date.now();
-    const saleDate = localDate(nowMs, state.settings.timezone);
+    const activeDay = state.businessDay;
+    const saleDate = activeDay?.date || localDate(nowMs, state.settings.timezone);
+    const nextBusinessDay: BusinessDaySession = activeDay || {
+      id: uid(),
+      date: saleDate,
+      openedAt: nowMs,
+    };
     const paidSum = payments.reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
     const cashier = pickRandom(state.settings.cashierNames, state.settings.lastCashier);
 
@@ -363,8 +467,12 @@ export default function App() {
       orders: nextOrders,
       daily: { ...prev.daily, [saleDate]: updatedDaily },
       settings: { ...prev.settings, lastCashier: cashier },
+      businessDay: nextBusinessDay,
     }));
     setCurrentOrderId(nextOrders[0]?.id || null);
+    if (!activeDay) {
+      showToast(`Business Day ${saleDate} auto-opened`);
+    }
 
     void printLines(buildReceipt(sale, state.settings), `Receipt #${sale.orderNo}`);
 
@@ -543,13 +651,17 @@ export default function App() {
       state.sales,
       state.expenses,
       state.daily,
-      date
+      date,
+      state.businessDay
     );
+    const isCurrentBusinessDay = Boolean(state.businessDay && state.businessDay.date === date);
+    setCloseDayOnPrint(isCurrentBusinessDay);
     setPreviewModal({
       open: true,
       title: `Preview: End of Day Report (${date})`,
       subtitle: 'Tip: If you spot a mistake, close this window, edit your Expenses or Kas, and print again.',
       lines,
+      summaryDate: date,
     });
   };
 
@@ -787,6 +899,7 @@ export default function App() {
           daily: imported.daily || {},
           settings,
           pendingDeletes: imported.pendingDeletes || { expenses: [], sales: [] },
+          businessDay: imported.businessDay || null,
         });
         showToast('Backup imported');
       } catch {
@@ -806,6 +919,7 @@ export default function App() {
       daily: {},
       settings: { ...DEFAULT_SETTINGS },
       pendingDeletes: { expenses: [], sales: [] },
+      businessDay: null,
     });
     setCurrentOrderId(null);
     showToast('Local data wiped');
@@ -861,8 +975,29 @@ export default function App() {
           ))}
         </nav>
 
-        {/* Zone 3: Primary actions (Install + Printer) */}
+        {/* Zone 3: Primary actions (Business Day + Install + Printer) */}
         <div className="flex items-center gap-2 shrink-0">
+          <button
+            type="button"
+            onClick={openBusinessDayDialog}
+            className={`inline-flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-bold border transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
+              state.businessDay
+                ? 'bg-[var(--green-soft)] text-[var(--green)] border-[var(--green-line)]'
+                : 'bg-[var(--accent-soft)] text-[var(--accent)] border-[var(--accent)]'
+            }`}
+          >
+            {state.businessDay ? (
+              <>
+                <span className="w-2 h-2 rounded-full bg-[var(--green)]" />
+                <span>Day: {state.businessDay.date.slice(5)}</span>
+              </>
+            ) : (
+              <>
+                <Play className="w-3.5 h-3.5" />
+                <span>Open Day</span>
+              </>
+            )}
+          </button>
           <PWAInstallButton variant="header" />
           <button
             type="button"
@@ -887,6 +1022,8 @@ export default function App() {
             currentOrderId={currentOrderId}
             products={state.products}
             settings={state.settings}
+            businessDay={state.businessDay}
+            onOpenBusinessDayModal={openBusinessDayDialog}
             onSelectOrder={setCurrentOrderId}
             onCreateOrder={handleCreateOrder}
             onDeleteOrder={handleDeleteOrder}
@@ -907,10 +1044,12 @@ export default function App() {
             expenses={state.expenses}
             daily={state.daily}
             settings={state.settings}
+            businessDay={state.businessDay}
             syncing={syncing}
             onSaveDaily={handleSaveDaily}
             onPrintSummary={handlePrintSummary}
             onPushAll={handlePushAll}
+            onOpenBusinessDayModal={openBusinessDayDialog}
           />
         )}
 
@@ -918,6 +1057,7 @@ export default function App() {
           <ExpensesView
             expenses={state.expenses}
             settings={state.settings}
+            businessDay={state.businessDay}
             syncing={syncing}
             onAddExpense={handleAddExpense}
             onDeleteExpense={handleDeleteExpense}
@@ -942,6 +1082,7 @@ export default function App() {
           <SalesView
             sales={state.sales}
             settings={state.settings}
+            businessDay={state.businessDay}
             onReprint={sale => void printLines(buildReceipt(sale, state.settings), `Receipt #${sale.orderNo}`)}
           />
         )}
@@ -1004,8 +1145,14 @@ export default function App() {
               type="button"
               onClick={() => {
                 const lines = previewModal.lines;
+                const summaryDate = previewModal.summaryDate;
+                const shouldCloseDay =
+                  Boolean(summaryDate && closeDayOnPrint && state.businessDay?.date === summaryDate);
                 setPreviewModal(prev => ({ ...prev, open: false }));
                 printViaBrowser(lines, state.settings.paperWidth);
+                if (shouldCloseDay && summaryDate) {
+                  void handleCloseBusinessDay(summaryDate);
+                }
               }}
               className="px-4 py-2 rounded-xl text-sm font-bold border border-[var(--line)] bg-[var(--surface)] text-[var(--ink)] hover:bg-[var(--bg)] cursor-pointer"
             >
@@ -1015,6 +1162,9 @@ export default function App() {
               type="button"
               onClick={async () => {
                 const lines = previewModal.lines;
+                const summaryDate = previewModal.summaryDate;
+                const shouldCloseDay =
+                  Boolean(summaryDate && closeDayOnPrint && state.businessDay?.date === summaryDate);
                 setPreviewModal(prev => ({ ...prev, open: false }));
                 try {
                   if (!printerState.connected) {
@@ -1025,6 +1175,9 @@ export default function App() {
                   }
                   await sendToPrinter(buildEscPos(lines, state.settings));
                   showToast('Printed');
+                  if (shouldCloseDay && summaryDate) {
+                    await handleCloseBusinessDay(summaryDate);
+                  }
                 } catch {
                   showToast('Thermal printer failed — use Browser Print', 'err');
                 }
@@ -1039,9 +1192,138 @@ export default function App() {
         {previewModal.subtitle && (
           <p className="text-xs text-[var(--muted)] italic mb-3">{previewModal.subtitle}</p>
         )}
+        {previewModal.summaryDate && state.businessDay?.date === previewModal.summaryDate && (
+          <label className="flex items-center gap-2.5 px-3 py-2.5 mb-3 rounded-xl border border-[var(--line)] bg-[var(--bg)] text-xs font-semibold text-[var(--ink)] cursor-pointer">
+            <input
+              type="checkbox"
+              checked={closeDayOnPrint}
+              onChange={e => setCloseDayOnPrint(e.target.checked)}
+              className="w-4 h-4 accent-[var(--accent)] cursor-pointer"
+            />
+            <span>End Business Day ({previewModal.summaryDate}) after printing</span>
+          </label>
+        )}
         <pre className="font-mono-num text-[11.5px] leading-snug bg-[var(--receipt-bg)] border border-dashed border-[var(--line)] rounded-xl p-4 whitespace-pre overflow-x-auto max-h-[55vh] text-[var(--receipt-ink)]">
           {linesToPreviewText(previewModal.lines, state.settings.paperWidth)}
         </pre>
+      </Modal>
+
+      {/* Open Business Day Modal */}
+      <Modal
+        open={businessDayModal === 'open'}
+        title="Open Business Day"
+        onClose={() => setBusinessDayModal(null)}
+        footer={
+          <>
+            <button
+              type="button"
+              onClick={() => setBusinessDayModal(null)}
+              className="px-4 py-2 rounded-xl text-sm font-semibold border border-[var(--line)] bg-[var(--bg)] text-[var(--ink-2)] cursor-pointer"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={() => void handleOpenBusinessDay(openDayDate, Number(openDayKas) || 0)}
+              className="px-5 py-2 rounded-xl text-sm font-bold bg-[var(--accent)] text-[var(--accent-ink)] cursor-pointer"
+            >
+              Start Business Day
+            </button>
+          </>
+        }
+      >
+        <p className="text-xs text-[var(--muted)] mb-4 leading-relaxed">
+          All orders and expenses recorded until you print the End of Day Report will be grouped under this Business Day, even past midnight.
+        </p>
+        <label className="block mb-3">
+          <span className="block text-[11px] font-extrabold uppercase text-[var(--ink-2)] mb-1.5">
+            Business Date
+          </span>
+          <input
+            type="date"
+            value={openDayDate}
+            onChange={e => {
+              const val = e.target.value;
+              setOpenDayDate(val);
+              const existingKas = state.daily[val]?.kas;
+              setOpenDayKas(existingKas ? String(existingKas) : '');
+            }}
+            className="w-full px-3 py-2.5 rounded-xl border border-[var(--line)] bg-[var(--bg)] text-sm font-semibold text-[var(--ink)] outline-none focus:border-[var(--accent)] focus:bg-[var(--surface)]"
+          />
+        </label>
+        <label className="block">
+          <span className="block text-[11px] font-extrabold uppercase text-[var(--ink-2)] mb-1.5">
+            Opening Cash Float / Start Kas (Rp, optional)
+          </span>
+          <input
+            autoFocus
+            type="number"
+            value={openDayKas}
+            onChange={e => setOpenDayKas(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && void handleOpenBusinessDay(openDayDate, Number(openDayKas) || 0)}
+            placeholder="0"
+            className="w-full px-3 py-2.5 rounded-xl border border-[var(--line)] bg-[var(--bg)] text-base font-extrabold text-right text-[var(--ink)] tabular-nums outline-none focus:border-[var(--accent)] focus:bg-[var(--surface)]"
+          />
+        </label>
+      </Modal>
+
+      {/* Active Business Day Info Modal */}
+      <Modal
+        open={businessDayModal === 'info' && state.businessDay !== null}
+        title="Active Business Day"
+        onClose={() => setBusinessDayModal(null)}
+        footer={
+          <>
+            <button
+              type="button"
+              onClick={() => void handleCloseBusinessDay()}
+              className="px-4 py-2 rounded-xl text-sm font-semibold border border-[var(--line)] bg-[var(--bg)] text-[var(--danger)] hover:bg-[var(--accent-soft)] cursor-pointer"
+            >
+              Close Without Printing
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setBusinessDayModal(null);
+                setActiveTab('summary');
+              }}
+              className="px-4 py-2 rounded-xl text-sm font-bold bg-[var(--accent)] text-[var(--accent-ink)] cursor-pointer"
+            >
+              Go to Summary &amp; Print EOD
+            </button>
+          </>
+        }
+      >
+        {state.businessDay && (() => {
+          const activeDate = state.businessDay.date;
+          const activeSales = state.sales.filter(s => s.date === activeDate);
+          const metrics = computeDailyMetrics(activeDate, state.sales, state.expenses, state.daily[activeDate]);
+          return (
+            <div className="space-y-2.5 text-sm">
+              <div className="flex justify-between py-1.5 border-b border-[var(--line-soft)]">
+                <span className="text-[var(--muted)]">Business Date</span>
+                <strong className="text-[var(--ink)] tabular-nums">{activeDate}</strong>
+              </div>
+              <div className="flex justify-between py-1.5 border-b border-[var(--line-soft)]">
+                <span className="text-[var(--muted)]">Opened At</span>
+                <span className="font-semibold text-[var(--ink)] tabular-nums">
+                  {fmtDateTime(state.businessDay.openedAt, state.settings.timezone)}
+                </span>
+              </div>
+              <div className="flex justify-between py-1.5 border-b border-[var(--line-soft)]">
+                <span className="text-[var(--muted)]">Orders Recorded</span>
+                <span className="font-bold text-[var(--ink)] tabular-nums">{activeSales.length}</span>
+              </div>
+              <div className="flex justify-between py-1.5">
+                <span className="text-[var(--muted)]">Shift Sales Total</span>
+                <strong className="text-[var(--accent)] tabular-nums">{rp(metrics.totalSales)}</strong>
+              </div>
+              <p className="text-xs text-[var(--muted)] pt-2 leading-relaxed">
+                Any order or expense made now (even after midnight) counts under <b>{activeDate}</b> until you print the End of Day Report.
+              </p>
+            </div>
+          );
+        })()}
       </Modal>
 
       {/* Offline Mode Indicator */}
